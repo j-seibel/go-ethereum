@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // Argument holds the name of the argument and the corresponding type.
@@ -238,13 +240,23 @@ func (arguments Arguments) Pack(args ...interface{}) ([]byte, error) {
 	for i, a := range args {
 		input := abiArgs[i]
 		// pack the input
+		// check if input is a string
+
 		packed, err := input.Type.pack(reflect.ValueOf(a))
 		if err != nil {
 			return nil, err
 		}
 		// check for dynamic types
-		if isDynamicType(input.Type) {
-			// set the offset
+		if input.Type.T == StringTy {
+			// Strings are encoded by taking the keccak256 hash of their contents
+			// append the offset to the packed input
+			inputString := reflect.ValueOf(a).String()
+			hashedString := crypto.Keccak256([]byte(inputString))
+			packed = hashedString
+			ret = append(ret, hashedString...)
+
+		} else if isDynamicType(input.Type) {
+
 			ret = append(ret, packNum(reflect.ValueOf(inputOffset))...)
 			// calculate next offset
 			inputOffset += len(packed)
@@ -255,6 +267,7 @@ func (arguments Arguments) Pack(args ...interface{}) ([]byte, error) {
 			ret = append(ret, packed...)
 		}
 	}
+
 	// append the variable input at the end of the packed input
 	ret = append(ret, variableInput...)
 
